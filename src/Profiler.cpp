@@ -1,5 +1,5 @@
 //============================================================================
-// Name        : helloBBB.cpp
+// Name        : Profiler.cpp
 // Author      : 
 // Version     :
 // Copyright   : Your copyright notice

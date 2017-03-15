@@ -7,19 +7,19 @@ CPP_SRCS += \
 ../src/BlackCore.cpp \
 ../src/BlackI2C.cpp \
 ../src/BlackUART.cpp \
-../src/helloBBB.cpp 
+../src/Profiler.cpp 
 
 OBJS += \
 ./src/BlackCore.o \
 ./src/BlackI2C.o \
 ./src/BlackUART.o \
-./src/helloBBB.o 
+./src/Profiler.o 
 
 CPP_DEPS += \
 ./src/BlackCore.d \
 ./src/BlackI2C.d \
 ./src/BlackUART.d \
-./src/helloBBB.d 
+./src/Profiler.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
