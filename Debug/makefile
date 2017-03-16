@@ -47,13 +47,18 @@ Profiler: $(OBJS) $(USER_OBJS)
 	arm-linux-gnueabihf-g++ -L/home/joao/workspace/helloBBB/BlackLib -static -o "Profiler" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
+	$(MAKE) --no-print-directory post-build
 
 # Other Targets
 clean:
 	-$(RM) $(CC_DEPS)$(C++_DEPS)$(EXECUTABLES)$(OBJS)$(C_UPPER_DEPS)$(CXX_DEPS)$(C_DEPS)$(CPP_DEPS) Profiler
 	-@echo ' '
 
+post-build:
+	-scp Profiler root@192.168.7.2:/root/Joao
+	-@echo ' '
+
 .PHONY: all clean dependents
-.SECONDARY:
+.SECONDARY: post-build
 
 -include ../makefile.targets

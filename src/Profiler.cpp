@@ -28,6 +28,70 @@ union semun {
 
 using namespace std;
 
+class BatteryManager
+{
+	private:
+		BlackLib::BlackUART Uart4;
+	public:
+		BatteryManager():Uart4(BlackLib::UART4, BlackLib::Baud19200, BlackLib::ParityNo, BlackLib::StopOne, BlackLib::Char8)
+		{
+			bool isOpened=this->Uart4.open( BlackLib::ReadWrite | BlackLib::NonBlock );
+			if( !isOpened )
+			{
+				std::cout << "UART DEVICE CAN\'T OPEN.;" << std::endl;
+				exit(1);
+			}
+
+		}
+
+		unsigned int timeToEmpty()
+		{
+
+			string uart,aux,minToEnd;
+			Uart4 >> uart;
+
+			unsigned int a;
+			if(uart=="UartReadError")
+			{
+				return 0;
+			}
+
+			std::stringstream UartStream(uart);
+			while(std::getline(UartStream,aux,'\n')){
+				a=aux.find("S");
+				if(a!=string::npos)
+				{
+					minToEnd=aux.substr(a+5, 4);
+					return (unsigned int)strtol(minToEnd.c_str(), NULL, 16);
+				}
+			}
+			return 0;
+		}
+		unsigned int percentage()
+		{
+			string uart,aux,percentage;
+			Uart4 >> uart;
+			unsigned int a;
+			if(uart=="UartReadError")
+				return 0;
+
+			std::stringstream UartStream(uart);
+			while(std::getline(UartStream,aux,'\n')){
+				a=aux.find("S");
+				if(a!=string::npos)
+				{
+					percentage=aux.substr(a+19, 2);
+					return (unsigned int)strtol(percentage.c_str(), NULL, 16);
+				}
+			}
+			return 0;
+		}
+
+
+		virtual ~BatteryManager(){
+			this->Uart4.close();
+		}
+};
 
 class PWM
 {
@@ -476,40 +540,10 @@ class DataTime
 int main() {
 
 	system("config-pin overlay cape-universal");
-
 	sleep(5);
-	cout<<endl;
 	system("config-pin P9.13 uart");
 	system("config-pin P9.11 uart");
-	BlackLib::BlackUART Uart4(BlackLib::UART4, BlackLib::Baud19200, BlackLib::ParityNo, BlackLib::StopOne, BlackLib::Char8);
-	cout<<"UART"<<endl;
-	Uart4.open( BlackLib::ReadWrite | BlackLib::NonBlock );
-	//string command="a\n";
-	string uart;
-	//std::string writeToUart=0x00;
-	//Uart4 << writeToUart;
-	char a[1];
-	a[0]=0x00;
-	Uart4.write(a,1);
-	sleep(1);
-	Uart4 >> uart;
-	cout<<uart<<" After break"<<endl;
-	//writeToUart  = "B";
-	//Uart4 << writeToUart;
-	sleep(1);
-	//if(Uart4.flush(BlackLib::bothDirection))
-	//	cout<<"Flush Done"<<endl;
-	//sleep(2);
-	//Uart4.write("B");
-
-	do{
-		Uart4 >> uart;
-		//if(uart!="UartReadError")
-		cout<<uart<<endl;
-		sleep(1);
-	}
-	while(true);
-	Uart4.close();
+	cout<<endl;
 
 	key_t keyData, keyTime;
 	int shmidData, shmidTime;
@@ -531,12 +565,12 @@ int main() {
 	}
 	/* connect to (and possibly create) the segment: */
 	//Create shared memory for data
-	if ((shmidData = shmget(keyData, 3*sizeof(float), 0644 | IPC_CREAT)) == -1) {
+	if ((shmidData = shmget(keyData, 4*sizeof(float), 0644 | IPC_CREAT)) == -1) {
 		perror("shmget. Error creating memory segment");
 		exit(1);
 	}
 	//Create shared memory for timestamps
-	if ((shmidTime = shmget(keyTime, 3*sizeof(time_t), 0644 | IPC_CREAT)) == -1) {
+	if ((shmidTime = shmget(keyTime, 4*sizeof(time_t), 0644 | IPC_CREAT)) == -1) {
 		perror("shmget. Error creating memory segment");
 		exit(1);
 	}
@@ -572,7 +606,7 @@ int main() {
 		perror("error creating process");
 		exit(1);
 	}
-/////////////PROCESS 1
+//////////////////////////////////////////PROCESS 1
 	if(PID1==0)
 	{
 		struct sembuf sb;
@@ -594,13 +628,26 @@ int main() {
 		timestamp[0]=0;
 		timestamp[1]=0;
 		timestamp[2]=0;
+		timestamp[3]=0;
 		//////////
 		TemperaturaI2C Temp;
 		float Temperatura=Temp.readTemperature();
 		PressureI2C Pre;
 		float pressure=Pre.readPressure();
 		float depth=Pre.calcDepth(pressure);
+		BatteryManager Battery;
 
+		float timeToEnd, percentage;
+
+		do{
+			timeToEnd=(float)Battery.timeToEmpty();
+			percentage=(float)Battery.percentage();
+		}
+		while(timeToEnd==0);
+		do{
+			percentage=(float)Battery.percentage();
+		}
+		while(percentage==0);
 		//cout<<"Pressao "<<pressure<<endl<<endl;
 		//cout<<"Profundidade "<<depth<<endl<<endl;
 		//cout<<"Temperatura "<<Temperatura<<endl<<endl;
@@ -618,9 +665,11 @@ int main() {
 		data[0]=Temperatura;
 		data[1]=pressure;
 		data[2]=depth;
+		data[3]=timeToEnd;
 		timestamp[0]=std::time(0);
 		timestamp[1]=std::time(0);
 		timestamp[2]=std::time(0);
+		timestamp[3]=std::time(0);
 
 
 		sb.sem_op = 1; /* free resource */
@@ -645,10 +694,10 @@ int main() {
 		perror("error creating process");
 		exit(1);
 	}
-/////////////PROCESS 2
+/////////////////////////////////////////PROCESS 2
 	if(PID2==0)
 	{
-		std::queue<DataTime> temperatura, pressao, profundidade;
+		std::queue<DataTime> temperatura, pressao, profundidade,bateria;
 
 		cout<<"Child 2 Process number "<<getpid()<<endl<<endl;
 		ofstream outputFile("Teste.txt");
@@ -680,10 +729,11 @@ int main() {
 		temperatura.push(DataTime(data[0],timestamp[0]));
 		pressao.push(DataTime(data[1],timestamp[1]));
 		profundidade.push(DataTime(data[2],timestamp[2]));
-
+		bateria.push(DataTime(data[3],timestamp[3]));
 		timestamp[0]=0;
 		timestamp[1]=0;
 		timestamp[2]=0;
+		timestamp[3]=0;
 
 		sb.sem_op = 1; /* free resource */
 		if (semop(semid, &sb, 1) == -1) {
@@ -694,9 +744,11 @@ int main() {
 		outputFile <<"Temperatura by TSYS "<<temperatura.front().data<<" at time "<<ctime(&temperatura.front().timestamp)<<endl;
 		outputFile <<"Pressao "<<pressao.front().data<<" at time "<<ctime(&pressao.front().timestamp)<<endl;
 		outputFile <<"Profundidade "<<profundidade.front().data<<" at time "<<ctime(&profundidade.front().timestamp)<<endl;
+		outputFile <<"Time to end "<<bateria.front().data<<" at time "<<ctime(&bateria.front().timestamp)<<endl;
 		temperatura.pop();
 		pressao.pop();
 		profundidade.pop();
+		bateria.pop();
 		outputFile.close();
 
 		cout << "writing done"<<endl<<endl;
